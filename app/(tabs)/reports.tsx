@@ -1,10 +1,12 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput, Platform } from 'react-native';
-import { TriangleAlert as AlertTriangle, Phone, MessageSquare, TrendingUp, X } from 'lucide-react-native';
+import { TriangleAlert as AlertTriangle, Phone, MessageSquare, TrendingUp, X, MapPin, Users, Shield } from 'lucide-react-native';
 import { useTheme } from '../dark';
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, orderBy, Timestamp, addDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import RNPickerSelect from 'react-native-picker-select';
+import { ScamDetectionService } from '../../services/scamDetection';
+import { UserProfileService } from '../../services/userProfile';
 
 // Type definition for report
 type Report = {
@@ -21,6 +23,9 @@ export default function ReportsScreen() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [communityImpact, setCommunityImpact] = useState<any>(null);
+  const [locationTrends, setLocationTrends] = useState<any[]>([]);
   const [newReport, setNewReport] = useState({
     phoneNumber: '',
     description: '',
@@ -28,9 +33,13 @@ export default function ReportsScreen() {
     severity: 'Medium'
   });
 
+  const scamDetectionService = ScamDetectionService.getInstance();
+  const userProfileService = UserProfileService.getInstance();
+
   useEffect(() => {
-    const fetchReports = async () => {
+    const fetchData = async () => {
       try {
+        // Fetch reports
         const reportsRef = collection(db, 'reportedNumbers');
         const q = query(reportsRef, orderBy('reportedAt', 'desc'));
         const snapshot = await getDocs(q);
@@ -42,14 +51,28 @@ export default function ReportsScreen() {
           };
         });
         setReports(data);
+
+        // Load user profile
+        const profile = await userProfileService.getProfile();
+        setUserProfile(profile);
+
+        // Get community impact data
+        const impact = scamDetectionService.getCommunityImpact();
+        setCommunityImpact(impact);
+
+        // Get location-based trends
+        if (profile?.location) {
+          const trends = scamDetectionService.getLocationScamTrends(profile.location);
+          setLocationTrends(trends);
+        }
       } catch (error) {
-        console.error('Error fetching reports:', error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchReports();
+    fetchData();
   }, []);
 
   const handleReportSubmit = async () => {
@@ -75,6 +98,9 @@ export default function ReportsScreen() {
         ...reportData
       }, ...reports]);
 
+      // Award points to user for reporting
+      await userProfileService.incrementReports();
+
       // Reset form and close modal
       setNewReport({
         phoneNumber: '',
@@ -83,6 +109,8 @@ export default function ReportsScreen() {
         severity: 'Medium'
       });
       setModalVisible(false);
+
+      alert('Report submitted successfully! You earned 10 points for helping the community.');
     } catch (error) {
       console.error('Error adding report:', error);
       alert('Failed to submit report. Please try again.');
@@ -93,8 +121,55 @@ export default function ReportsScreen() {
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
         <Text style={[styles.title, { color: colors.text }]}>Scam Reports</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Community-reported scams</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {userProfile ? `Community protection in ${userProfile.location}` : 'Community-reported scams'}
+        </Text>
       </View>
+
+      {/* Community Impact Section */}
+      {communityImpact && (
+        <View style={styles.impactSection}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Community Impact</Text>
+          <View style={styles.impactGrid}>
+            <View style={[styles.impactCard, { backgroundColor: colors.surface }]}>
+              <Shield size={24} color="#10B981" />
+              <Text style={[styles.impactNumber, { color: '#10B981' }]}>
+                ₱{(communityImpact.moneyProtected / 1000000).toFixed(1)}M
+              </Text>
+              <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Money Protected</Text>
+            </View>
+            <View style={[styles.impactCard, { backgroundColor: colors.surface }]}>
+              <Users size={24} color="#3B82F6" />
+              <Text style={[styles.impactNumber, { color: '#3B82F6' }]}>
+                {communityImpact.usersHelped.toLocaleString()}
+              </Text>
+              <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Users Helped</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Location-based Trends */}
+      {userProfile && locationTrends.length > 0 && (
+        <View style={styles.trendsSection}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <MapPin size={16} color={colors.primary} /> Scam Trends in {userProfile.location}
+          </Text>
+          {locationTrends.map((trend, index) => (
+            <View key={index} style={[styles.trendItem, { backgroundColor: colors.surface }]}>
+              <View style={styles.trendHeader}>
+                <Text style={[styles.trendType, { color: colors.text }]}>{trend.scamType}</Text>
+                <Text style={[styles.trendCount, { color: colors.primary }]}>
+                  {trend.recentReports} reports this week
+                </Text>
+              </View>
+              <Text style={[styles.trendDescription, { color: colors.textSecondary }]}>
+                Common patterns: {trend.commonPatterns.join(', ')}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       <View style={styles.statsContainer}>
         <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
@@ -289,6 +364,54 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     marginTop: 4,
+  },
+  impactSection: {
+    padding: 16,
+  },
+  impactGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  impactCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  impactNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  impactLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  trendsSection: {
+    padding: 16,
+  },
+  trendItem: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  trendHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trendType: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  trendCount: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  trendDescription: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   statsContainer: {
     padding: 16,

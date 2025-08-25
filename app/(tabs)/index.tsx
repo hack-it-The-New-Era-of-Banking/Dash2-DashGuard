@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { Shield as ShieldIcon, TriangleAlert as AlertTriangle, MessageSquare } from 'lucide-react-native';
+import { Shield as ShieldIcon, TriangleAlert as AlertTriangle, MessageSquare, MapPin, Star } from 'lucide-react-native';
 import { useTheme } from '../dark'; // Update with correct path
 import Animated, {
   useSharedValue,
@@ -9,10 +9,16 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
+import UserBadges from '../../components/UserBadges';
+import { UserProfileService, UserProfile } from '../../services/userProfile';
 
 export default function ProtectScreen() {
   // Use the theme context to get colors and dark mode state
   const { isDarkMode, colors } = useTheme();
+  
+  // User profile state
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const userProfileService = UserProfileService.getInstance();
 
   // State to manage protection status
   const [isProtectionActive, setIsProtectionActive] = useState(true);
@@ -26,6 +32,20 @@ export default function ProtectScreen() {
   const toggleProtection = () => {
     setIsProtectionActive((prev) => !prev);
   };
+
+  // Load user profile on component mount
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await userProfileService.getProfile();
+        setUserProfile(profile);
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+      }
+    };
+    
+    loadProfile();
+  }, []);
 
   // Start pulsating and rotation animations when protection is active
   React.useEffect(() => {
@@ -77,9 +97,57 @@ export default function ProtectScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.title, { color: colors.text }]}>DashGuard</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Your Protection Against Scams</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {userProfile ? `Hello, ${userProfile.name}!` : 'DashGuard'}
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {userProfile ? `Stay safe in ${userProfile.location}` : 'Your Protection Against Scams'}
+        </Text>
       </View>
+
+      {/* User Profile & Badges Section */}
+      {userProfile && (
+        <View style={styles.profileSection}>
+          <UserBadges 
+            badges={userProfile.badges}
+            points={userProfile.points}
+            reportsSubmitted={userProfile.reportsSubmitted}
+            scamsBlocked={userProfile.scamsBlocked}
+          />
+        </View>
+      )}
+
+      {/* Risk Profile Section */}
+      {userProfile && (
+        <View style={[styles.riskSection, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Risk Profile</Text>
+          <View style={styles.riskContent}>
+            <View style={styles.riskLevel}>
+              <Text style={[styles.riskLevelText, { color: colors.textSecondary }]}>
+                Current Risk Level: 
+              </Text>
+              <Text style={[styles.riskLevelValue, { 
+                color: userProfile.riskLevel === 'high' ? '#DC2626' : 
+                      userProfile.riskLevel === 'medium' ? '#D97706' : '#10B981' 
+              }]}>
+                {userProfile.riskLevel.toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.frequentApps}>
+              <Text style={[styles.appsLabel, { color: colors.textSecondary }]}>
+                Frequent Apps:
+              </Text>
+              <View style={styles.appsList}>
+                {userProfile.frequentApps.map((app, index) => (
+                  <View key={index} style={[styles.appChip, { backgroundColor: colors.primary + '20' }]}>
+                    <Text style={[styles.appChipText, { color: colors.primary }]}>{app}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Protection Toggle Section */}
       <View style={styles.toggleContainer}>
@@ -112,18 +180,39 @@ export default function ProtectScreen() {
         <View style={styles.gridItem}>
           <View style={[styles.statBox, { backgroundColor: isDarkMode ? '#3F3F46' : '#FEF3C7' }]}>
             <AlertTriangle size={24} color="#D97706" />
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>6</Text>
+            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>
+              {userProfile?.scamsBlocked || 6}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Threats Blocked</Text>
           </View>
         </View>
         <View style={styles.gridItem}>
           <View style={[styles.statBox, { backgroundColor: isDarkMode ? '#3F3F46' : '#E0E7FF' }]}>
             <MessageSquare size={24} color="#4F46E5" />
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#818CF8' : '#4F46E5' }]}>1</Text>
+            <Text style={[styles.statNumber, { color: isDarkMode ? '#818CF8' : '#4F46E5' }]}>
+              {userProfile?.reportsSubmitted || 1}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Messages Scanned</Text>
           </View>
         </View>
       </View>
+
+      {/* Location-based Activity Section */}
+      {userProfile && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <MapPin size={16} color={colors.primary} /> Activity in {userProfile.location}
+          </Text>
+          <View style={styles.locationActivity}>
+            <Text style={[styles.locationText, { color: colors.textSecondary }]}>
+              5 users in {userProfile.location} reported similar GCash scam this week
+            </Text>
+            <Text style={[styles.locationText, { color: colors.textSecondary }]}>
+              12 PayMaya phishing attempts blocked in your area today
+            </Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
@@ -137,7 +226,9 @@ export default function ProtectScreen() {
                 <AlertTriangle size={20} color="#DC2626" />
               </View>
               <View style={styles.activityContent}>
-                <Text style={[styles.activityTitle, { color: colors.text }]}>Suspicious Message Blocked</Text>
+                <Text style={[styles.activityTitle, { color: colors.text }]}>
+                  {userProfile ? `${userProfile.name}, suspicious GCash message blocked` : 'Suspicious Message Blocked'}
+                </Text>
                 <Text style={[styles.activityTime, { color: colors.textSecondary }]}>2 hours ago</Text>
               </View>
             </TouchableOpacity>
@@ -145,8 +236,21 @@ export default function ProtectScreen() {
         </View>
       </View>
 
+      {/* Personalized Safety Tips */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Safety Tips</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          {userProfile ? `Safety Tips for ${userProfile.name}` : 'Safety Tips'}
+        </Text>
+        {userProfile && userProfile.frequentApps.includes('GCash') && (
+          <Text style={[styles.tipsText, { color: colors.textSecondary }]}>
+            ⚠️ {userProfile.name}, always verify GCash promos in your official app, not through SMS links.
+          </Text>
+        )}
+        {userProfile && userProfile.frequentApps.includes('PayMaya') && (
+          <Text style={[styles.tipsText, { color: colors.textSecondary }]}>
+            ⚠️ {userProfile.name}, PayMaya will never ask for your PIN via SMS or calls.
+          </Text>
+        )}
         <Text style={[styles.tipsText, { color: colors.textSecondary }]}>
           ⚠️ Never share your OTP or banking credentials. Legitimate banks will never ask for this information.
         </Text>
@@ -176,6 +280,59 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     marginTop: 4,
+  },
+  profileSection: {
+    backgroundColor: '#F9FAFB',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
+  },
+  riskSection: {
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  riskContent: {
+    gap: 12,
+  },
+  riskLevel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  riskLevelText: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  riskLevelValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  frequentApps: {
+    gap: 8,
+  },
+  appsLabel: {
+    fontSize: 14,
+  },
+  appsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  appChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  appChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  locationActivity: {
+    gap: 8,
+  },
+  locationText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   toggleContainer: {
     alignItems: 'center',
@@ -276,5 +433,6 @@ const styles = StyleSheet.create({
   },
   tipsText: {
     lineHeight: 24,
+    marginBottom: 8,
   },
 });

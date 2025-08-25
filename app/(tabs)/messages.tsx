@@ -1,36 +1,37 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, Alert, Clipboard } from 'react-native';
 import Constants from 'expo-constants';
-import { MessageSquare, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle } from 'lucide-react-native';
+import { MessageSquare, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, MapPin } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import * as SMS from 'expo-sms';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { useTheme as useDarkTheme } from '../dark';
+import { useTheme } from '../dark';
+import PersonalizedAlert from '../../components/PersonalizedAlert';
+import { ScamDetectionService } from '../../services/scamDetection';
+import { UserProfileService } from '../../services/userProfile';
 
 const GEMINI_API_KEY = Constants.expoConfig?.extra?.geminiApiKey || '';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 // Initialize Google Geminis
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-const useTheme = () => ({  isDarkMode: true,
-  colors: {
-    background: '#000000',
-    surface: '#121212',
-    primary: '#BB86FC',
-    primaryLight: '#E3DAF8',
-    text: '#FFFFFF',
-    textSecondary: '#B3B3B3',
-    border: '#292929',
-    iconBackground: '#1F1F1F',
-    error: '#FF5252', // Added error color
-    warning: '#FFC107', // Added warning color
-    success: '#4CAF50', // Added success color
-  },
-});
+
 interface Message {
   id: string;
   sender: string;
   preview: string;
   timestamp: string;
   risk: 'high' | 'suspicious' | 'safe';
+  alert?: {
+    message: string;
+    severity: 'low' | 'medium' | 'high';
+    saferAlternative: string;
+    userContext: string;
+  };
+}
+
+interface ScamTrend {
+  type: string;
+  count: number;
+  location: string;
 }
 
 export default function MessagesScreen() {
@@ -38,6 +39,11 @@ export default function MessagesScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isAvailable, setIsAvailable] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentAlert, setCurrentAlert] = useState<any>(null);
+  const [locationTrends, setLocationTrends] = useState<ScamTrend[]>([]);
+  
+  const scamDetectionService = ScamDetectionService.getInstance();
+  const userProfileService = UserProfileService.getInstance();
 
   useEffect(() => {
     // Check if SMS is available on the device
@@ -151,11 +157,11 @@ export default function MessagesScreen() {
   const getRiskIcon = (risk: string) => {
     switch (risk) {
       case 'high':
-        return <AlertTriangle size={20} color={colors.error} />;
+        return <AlertTriangle size={20} color="#DC2626" />;
       case 'suspicious':
-        return <AlertTriangle size={20} color={colors.warning} />;
+        return <AlertTriangle size={20} color="#D97706" />;
       case 'safe':
-        return <CheckCircle size={20} color={colors.success} />;
+        return <CheckCircle size={20} color="#10B981" />;
       default:
         return null;
     }
@@ -177,11 +183,11 @@ export default function MessagesScreen() {
   const getRiskLabelStyle = (risk: string) => {
     switch (risk) {
       case 'high':
-        return { color: colors.error };
+        return { color: '#DC2626' };
       case 'suspicious':
-        return { color: colors.warning };
+        return { color: '#D97706' };
       case 'safe':
-        return { color: colors.success };
+        return { color: '#10B981' };
       default:
         return {};
     }
@@ -196,8 +202,8 @@ export default function MessagesScreen() {
 
       {!isAvailable && (
         <View style={styles.notSupportedBanner}>
-          <AlertTriangle size={18} color={colors.error} />
-          <Text style={[styles.notSupportedText, { color: colors.error }]}>SMS functionality is not available on this device</Text>
+          <AlertTriangle size={18} color="#DC2626" />
+          <Text style={[styles.notSupportedText, { color: '#DC2626' }]}>SMS functionality is not available on this device</Text>
         </View>
       )}
 
